@@ -1,0 +1,4 @@
+requests
+pandas
+html2text
+openpyxl
