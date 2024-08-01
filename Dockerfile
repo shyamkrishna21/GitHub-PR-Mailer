@@ -1,38 +1,52 @@
-# Use base image
-FROM python:3.11-slim
+# Base image
+FROM python:3.11-slim AS base
 
-# Set environment variables 
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
+# Builder image
+FROM base AS builder
 
-# Set working directory 
-WORKDIR /app
-
-# Copy the requirements 
-COPY requirements.txt .
-
-# Install system dependencies and Python packages
+# Install build dependencies
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        gcc \
        libpq-dev \
        cron \
-    && rm -rf /var/lib/apt/lists/* \
-    && python -m venv /venv \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set the working directory
+WORKDIR /app
+
+# Copy the requirements
+COPY requirements.txt .
+
+# Create virtual environment and install Python packages
+RUN python -m venv /venv \
     && /venv/bin/pip install --upgrade pip \
-    && /venv/bin/pip install -r requirements.txt \
-    && apt-get purge -y --auto-remove gcc \
-    && apt-get clean \
-    && rm -rf /root/.cache
+    && /venv/bin/pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application code
-COPY . .
+# Runner image
+FROM base AS runner
 
-# Copy the entrypoint script into the container
-COPY entrypoint.sh /entrypoint.sh
+# Install only runtime dependencies
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       libpq-dev \
+       cron \
+    && rm -rf /var/lib/apt/lists/*
 
-# Make the entrypoint script executable
-RUN chmod +x /entrypoint.sh
+# Set the working directory
+WORKDIR /app
 
-# Set the entrypoint script
-ENTRYPOINT ["/entrypoint.sh"]
+# Copy python dependencies
+COPY --from=builder /venv /venv
+
+# Copy code
+COPY . /app
+
+# Ensure that the virtual environment is used
+ENV PATH="/venv/bin:$PATH"
+
+# Entrypoint script executable
+RUN chmod +x /app/entrypoint.sh
+
+ENTRYPOINT ["/app/entrypoint.sh"]
+
